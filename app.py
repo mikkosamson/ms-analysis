@@ -2,9 +2,17 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
+import google.generativeai as genai
 
-st.set_page_config(page_title="Insight Pro", layout="wide")
-st.title("🚀 Data Insight Generator")
+st.set_page_config(page_title="AI Data Consultant", layout="wide")
+
+# --- 1. AI SETUP ---
+# This pulls the key from the "Secrets"
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    st.error("Please add your GEMINI_API_KEY to Streamlit Secrets!")
 
 @st.cache_data
 def load_data(file):
@@ -13,64 +21,61 @@ def load_data(file):
     else:
         return pd.read_excel(file)
 
-# --- NEW FUNCTION: CONVERT TO EXCEL FOR DOWNLOAD ---
 def to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Analysis')
+        df.to_excel(writer, index=False)
     return output.getvalue()
 
-uploaded_file = st.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
+st.title("🤖 AI-Powered Data Analyst")
+
+uploaded_file = st.file_uploader("Upload your data", type=["csv", "xlsx"])
 
 if uploaded_file is not None:
     df = load_data(uploaded_file)
-    
-    # --- DOWNLOAD SECTION ---
-    st.sidebar.header("📥 Export Results")
-    excel_data = to_excel(df)
-    st.sidebar.download_button(
-        label="Download Analysis as Excel",
-        data=excel_data,
-        file_name='my_analysis_report.xlsx',
-        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-
-    # --- AUTOMATED INSIGHTS ---
-    st.header("🤖 Key Findings")
     numeric_df = df.select_dtypes(include=['number'])
-    
-    if not numeric_df.empty:
-        main_col = numeric_df.columns[0]
-        total_sum = numeric_df[main_col].sum()
-        avg_val = numeric_df[main_col].mean()
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Count", f"{len(df):,}")
-        col2.metric(f"Total {main_col}", f"{total_sum:,.2f}")
-        col3.metric(f"Average {main_col}", f"{avg_val:,.2f}")
-        
-        st.info(f"**Insight:** Your largest **{main_col}** is {df[main_col].max()}, which is {round(df[main_col].max()/avg_val, 1)}x higher than the average.")
 
-    # --- VISUALS ---
+    # --- 2. SIDEBAR EXPORT ---
+    st.sidebar.header("📥 Export")
+    st.sidebar.download_button("Download Excel Report", data=to_excel(df), file_name='report.xlsx')
+
+    # --- 3. AI INSIGHTS GENERATION ---
+    st.header("🧠 AI Analysis")
+    
+    if st.button("Generate AI Insights"):
+        with st.spinner("The AI is studying your data..."):
+            # We send a text summary of the data to the AI
+            data_summary = df.describe().to_string()
+            prompt = f"""
+            You are a professional data analyst. Here is a summary of a dataset:
+            {data_summary}
+            
+            Please provide:
+            1. A 2-sentence summary of the overall trend.
+            2. Three specific bullet points of interesting observations.
+            3. One 'Warning' or 'Action Item' for the business owner.
+            """
+            
+            try:
+                response = model.generate_content(prompt)
+                st.markdown(response.text)
+            except Exception as e:
+                st.error(f"AI Error: {e}")
+
+    # --- 4. VISUALS ---
     st.divider()
-    chart_col, data_col = st.columns([2, 1])
+    st.header("📈 Interactive Charts")
+    col1, col2 = st.columns([2, 1])
     
-    with chart_col:
-        st.subheader("Interactive Visual")
-        x_var = st.selectbox("Category (X-axis)", df.columns)
-        y_var = st.selectbox("Value (Y-axis)", numeric_df.columns)
-        
-        fig = px.scatter(df, x=x_var, y=y_var, color=x_var, template="plotly_white")
+    with col1:
+        x_axis = st.selectbox("Select X-Axis", df.columns)
+        y_axis = st.selectbox("Select Y-Axis", numeric_df.columns if not numeric_df.empty else df.columns)
+        fig = px.bar(df, x=x_axis, y=y_axis, color_discrete_sequence=['#00CC96'])
         st.plotly_chart(fig, use_container_width=True)
-
-    with data_col:
-        st.subheader("Data Search")
-        search = st.text_input("Search records:")
-        if search:
-            filtered_df = df[df.apply(lambda row: search.lower() in row.astype(str).str.lower().values, axis=1)]
-            st.dataframe(filtered_df, height=400)
-        else:
-            st.dataframe(df.head(100), height=400)
+        
+    with col2:
+        st.subheader("Data Preview")
+        st.dataframe(df.head(50))
 
 else:
-    st.info("Upload a file to begin.")
+    st.info("Upload a file to unlock AI insights!")
