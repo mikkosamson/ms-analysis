@@ -10,7 +10,7 @@ st.set_page_config(page_title="AI Data Consultant", layout="wide")
 # This pulls the key from the "Secrets"
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 else:
     st.error("Please add your GEMINI_API_KEY to Streamlit Secrets!")
 
@@ -45,7 +45,8 @@ if uploaded_file is not None:
     if st.button("Generate AI Insights"):
         with st.spinner("The AI is studying your data..."):
             # We send a text summary of the data to the AI
-            data_summary = df.describe().to_string()
+										# Instead of sending everything, we only send a snapshot to keep it fast
+									 data_summary = df.head(10).to_string() + "\n" + df.describe().to_string()
             prompt = f"""
             You are a professional data analyst. Here is a summary of a dataset:
             {data_summary}
